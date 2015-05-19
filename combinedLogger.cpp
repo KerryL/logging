@@ -11,6 +11,9 @@
 // Local headers
 #include "combinedLogger.h"
 
+// utilities headers
+#include "utilities/mutexLocker.h"
+
 //==========================================================================
 // Class:			CombinedLogger
 // Function:		None

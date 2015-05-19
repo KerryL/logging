@@ -17,9 +17,6 @@
 #include <vector>
 #include <sstream>
 
-// Local headers
-#include "mutexLocker.h"
-
 class CombinedLogger : public std::ostream
 {
 public:
