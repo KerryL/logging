@@ -17,6 +17,12 @@
 #include <vector>
 #include <sstream>
 
+#ifdef _WIN32
+typedef void* ThreadID;
+#else
+typedef pthread_t ThreadID;
+#endif
+
 class CombinedLogger : public std::ostream
 {
 public:
@@ -38,9 +44,10 @@ private:
 
 	private:
 		CombinedLogger &log;
-		std::map<pthread_t, std::stringstream*> threadBuffer;
+		std::map<ThreadID, std::stringstream*> threadBuffer;
 		static pthread_mutex_t mutex;
 		void CreateThreadBuffer(void);
+		static ThreadID GetThreadID(const pthread_t &thread);
 	} buffer;
 
 	static CombinedLogger *logger;

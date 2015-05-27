@@ -107,7 +107,7 @@ void CombinedLogger::Add(std::ostream* log, bool manageMemory)
 //==========================================================================
 CombinedLogger::CombinedStreamBuffer::~CombinedStreamBuffer()
 {
-	std::map<pthread_t, std::stringstream*>::iterator it;
+	std::map<ThreadID, std::stringstream*>::iterator it;
 	for (it = threadBuffer.begin(); it != threadBuffer.end(); it++)
 		delete it->second;
 
@@ -139,7 +139,7 @@ int CombinedLogger::CombinedStreamBuffer::overflow(int c)
 {
 	CreateThreadBuffer();
 	if (c != traits_type::eof())
-		*threadBuffer[pthread_self()] << (char)c;
+		*threadBuffer[GetThreadID(pthread_self())] << (char)c;
 
 	return c;
 }
@@ -173,12 +173,12 @@ int CombinedLogger::CombinedStreamBuffer::sync(void)
 	unsigned int i;
 	for (i = 0; i < log.logs.size(); i++)
 	{
-		*log.logs[i].first << threadBuffer[pthread_self()]->str();
+		*log.logs[i].first << threadBuffer[GetThreadID(pthread_self())]->str();
 		log.logs[i].first->flush();
 	}
 
 	// Clear out the buffers
-	threadBuffer[pthread_self()]->str("");
+	threadBuffer[GetThreadID(pthread_self())]->str("");
 	str("");
 
 	return 0;
@@ -203,10 +203,36 @@ int CombinedLogger::CombinedStreamBuffer::sync(void)
 //==========================================================================
 void CombinedLogger::CombinedStreamBuffer::CreateThreadBuffer(void)
 {
-	if (threadBuffer.find(pthread_self()) == threadBuffer.end())
+	if (threadBuffer.find(GetThreadID(pthread_self())) == threadBuffer.end())
 	{
 		MutexLocker lock(mutex);
-		if (threadBuffer.find(pthread_self()) == threadBuffer.end())
-			threadBuffer[pthread_self()] = new std::stringstream;
+		if (threadBuffer.find(GetThreadID(pthread_self())) == threadBuffer.end())
+			threadBuffer[GetThreadID(pthread_self())] = new std::stringstream;
 	}
+}
+
+//==========================================================================
+// Class:			CombinedLogger::CombinedStreamBuffer
+// Function:		GetThreadID
+//
+// Description:		Returns identifier for a thread.  Added to allow for
+//					cross-platform use.
+//
+// Input Arguments:
+//		thread = const pthread_t&
+//
+// Output Arguments:
+//		None
+//
+// Return Value:
+//		ThreadID
+//
+//==========================================================================
+ThreadID CombinedLogger::CombinedStreamBuffer::GetThreadID(const pthread_t &thread)
+{
+#ifdef _WIN32
+	return thread.p;
+#else
+	return thread;
+#endif
 }
