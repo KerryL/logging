@@ -1,4 +1,4 @@
-// File:  combinedLogger.h
+// File:  combinedLogger.cpp
 // Date:  9/3/2013
 // Auth:  K. Loux
 // Copy:  (c) Kerry Loux 2013
