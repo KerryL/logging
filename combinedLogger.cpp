@@ -30,7 +30,6 @@
 //		None
 //
 //==========================================================================
-CombinedLogger *CombinedLogger::logger = NULL;
 pthread_mutex_t CombinedLogger::mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t CombinedLogger::CombinedStreamBuffer::mutex = PTHREAD_MUTEX_INITIALIZER;
 
