@@ -50,7 +50,6 @@ private:
 		static ThreadID GetThreadID(const pthread_t &thread);
 	} buffer;
 
-	static CombinedLogger *logger;
 	static pthread_mutex_t mutex;
 
 	std::vector<std::pair<std::ostream*, bool> > logs;
