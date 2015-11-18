@@ -194,7 +194,8 @@ void TimeHistoryLog::TimeHistoryStreamBuffer::MarkStartTime(void)
 unsigned int TimeHistoryLog::TimeHistoryStreamBuffer::GetColumnCount(void) const
 {
 	std::string line(str());
-	unsigned int i(1), next(0);
+	unsigned int i(1);
+	size_t next(0);
 	while ((next = line.find(delimiter, next)) != std::string::npos)
 	{
 		i++;
