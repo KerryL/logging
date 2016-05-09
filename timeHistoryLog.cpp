@@ -9,11 +9,15 @@
 #include <sstream>
 #include <cassert>
 
-// *nix headers
+// OS headers
+#ifdef _WIN32
+#else
 #include <unistd.h>
+#endif
 
 // Local headers
 #include "timeHistoryLog.h"
+#include "timingUtility.h"
 
 //==========================================================================
 // Class:			TimeHistoryLog
@@ -54,7 +58,7 @@ TimeHistoryLog::TimeHistoryLog(std::ostream& str, char delimiter) : std::ostream
 //		None
 //
 //==========================================================================
-void TimeHistoryLog::WriteHeader(void)
+void TimeHistoryLog::WriteHeader()
 {
 	assert(!headerWritten);
 	headerWritten = true;
@@ -98,6 +102,11 @@ void TimeHistoryLog::AddColumn(std::string title, std::string units)
 	buffer.IncrementColumns();
 }
 
+void TimeHistoryLog::SetNextTimeStamp(const double& time)
+{
+	buffer.SetNextTimeStamp(time);
+}
+
 //==========================================================================
 // Class:			TimeHistoryLog::TimeHistoryStreamBuffer
 // Function:		TimeHistoryStreamBuffer
@@ -119,6 +128,7 @@ TimeHistoryLog::TimeHistoryStreamBuffer::TimeHistoryStreamBuffer(std::ostream &s
 	const char delimiter) : output(str), delimiter(delimiter)
 {
 	started = false;
+	forcedTimeStamp = false;
 	columns = 1;
 }
 
@@ -126,7 +136,7 @@ TimeHistoryLog::TimeHistoryStreamBuffer::TimeHistoryStreamBuffer(std::ostream &s
 // Class:			TimeHistoryLog::TimeHistoryStreamBuffer
 // Function:		GetTime
 //
-// Description:		Returns a string containing the current time value.
+// Description:		Returns the current time value in seconds.
 //
 // Input Arguments:
 //		None
@@ -138,16 +148,12 @@ TimeHistoryLog::TimeHistoryStreamBuffer::TimeHistoryStreamBuffer(std::ostream &s
 //		double
 //
 //==========================================================================
-double TimeHistoryLog::TimeHistoryStreamBuffer::GetTime(void)
+double TimeHistoryLog::TimeHistoryStreamBuffer::GetTime()
 {
 	double elapsed;
-	struct timeval now;
-	if (gettimeofday(&now, NULL) == -1)
-		std::cout << "Failed to get current time" << std::endl;
+	ULongLong now(TimingUtility::GetMillisecondsSinceEpoch());
 
-	// All in one statement to prevent underflows in the usec calculation
-	elapsed = now.tv_sec - start.tv_sec + now.tv_usec * 1.0e-6 - start.tv_usec * 1.0e-6;
-
+	elapsed = static_cast<double>((now - start) * 1.0e-3);
 	return elapsed;
 }
 
@@ -168,10 +174,10 @@ double TimeHistoryLog::TimeHistoryStreamBuffer::GetTime(void)
 //		None
 //
 //==========================================================================
-void TimeHistoryLog::TimeHistoryStreamBuffer::MarkStartTime(void)
+void TimeHistoryLog::TimeHistoryStreamBuffer::MarkStartTime()
 {
-	if (gettimeofday(&start, NULL) == -1)
-		std::cout << "Failed to mark start time" << std::endl;
+	assert(!started);
+	start = TimingUtility::GetMillisecondsSinceEpoch();
 	started = true;
 }
 
@@ -191,7 +197,7 @@ void TimeHistoryLog::TimeHistoryStreamBuffer::MarkStartTime(void)
 //		unsigned int
 //
 //==========================================================================
-unsigned int TimeHistoryLog::TimeHistoryStreamBuffer::GetColumnCount(void) const
+unsigned int TimeHistoryLog::TimeHistoryStreamBuffer::GetColumnCount() const
 {
 	std::string line(str());
 	unsigned int i(1);
@@ -221,10 +227,16 @@ unsigned int TimeHistoryLog::TimeHistoryStreamBuffer::GetColumnCount(void) const
 //		unsigned int
 //
 //==========================================================================
-void TimeHistoryLog::TimeHistoryStreamBuffer::IncrementColumns(void)
+void TimeHistoryLog::TimeHistoryStreamBuffer::IncrementColumns()
 {
 	assert(!started);
 	columns++;
+}
+
+void TimeHistoryLog::TimeHistoryStreamBuffer::SetNextTimeStamp(const double& time)
+{
+	forcedTime = time;
+	forcedTimeStamp = true;
 }
 
 //==========================================================================
@@ -245,7 +257,7 @@ void TimeHistoryLog::TimeHistoryStreamBuffer::IncrementColumns(void)
 //		unsigned int
 //
 //==========================================================================
-int TimeHistoryLog::TimeHistoryStreamBuffer::sync(void)
+int TimeHistoryLog::TimeHistoryStreamBuffer::sync()
 {
 	assert(GetColumnCount() == columns);
 
@@ -254,7 +266,15 @@ int TimeHistoryLog::TimeHistoryStreamBuffer::sync(void)
 	//        together as possible (i.e. the data in the first column may be older than
 	//        the data in the last column, but they will share a common time stamp).
 	if (started)
-		output << GetTime() << str();
+	{
+		if (forcedTimeStamp)
+		{
+			forcedTimeStamp = false;
+			output << forcedTime << str();
+		}
+		else
+			output << GetTime() << str();
+	}
 	else
 		output << str();
 	str("");

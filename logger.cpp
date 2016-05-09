@@ -27,7 +27,7 @@
 //		std::string containing the formatted time stamp
 //
 //==========================================================================
-std::string Logger::LoggerStreamBuffer::GetTimeStamp(void)
+std::string Logger::LoggerStreamBuffer::GetTimeStamp()
 {
 	time_t now(time(NULL));
 	struct tm* timeInfo = localtime(&now);
@@ -61,7 +61,7 @@ std::string Logger::LoggerStreamBuffer::GetTimeStamp(void)
 //		int
 //
 //==========================================================================
-int Logger::LoggerStreamBuffer::sync(void)
+int Logger::LoggerStreamBuffer::sync()
 {
 	output << GetTimeStamp() << " : " << str();
 	str("");

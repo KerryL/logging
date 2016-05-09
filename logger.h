@@ -20,11 +20,11 @@ private:
 		LoggerStreamBuffer(std::ostream &str) : output(str) {};
 		~LoggerStreamBuffer() {};
 
-		virtual int sync(void);
+		virtual int sync();
 
 	private:
 		std::ostream& output;
-		static std::string GetTimeStamp(void);
+		static std::string GetTimeStamp();
 	} buffer;
 
 public:

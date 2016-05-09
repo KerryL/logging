@@ -13,8 +13,17 @@
 #include <vector>
 #include <ctime>
 
-// *nix headers
+// OS headers
+#ifdef _WIN32
+#define NOMINMAX
+#define WIN32_LEAN_AND_MEAN
+#include <WinSock2.h>
+#else
 #include <sys/time.h>
+#endif
+
+// Local headers
+#include "utilities/portable.h"
 
 class TimeHistoryLog : public std::ostream
 {
@@ -25,35 +34,40 @@ private:
 		TimeHistoryStreamBuffer(std::ostream &str, const char delimiter);
 		~TimeHistoryStreamBuffer() {};
 
-		virtual int sync(void);
+		virtual int sync();
 
-		void MarkStartTime(void);
-		void IncrementColumns(void);
+		void MarkStartTime();
+		void IncrementColumns();
+
+		void SetNextTimeStamp(const double& time);
 
 	private:
 		std::ostream& output;
 		const char delimiter;
 
 		bool started;
+		bool forcedTimeStamp;
 
-		struct timeval start;
+		ULongLong start;
 		unsigned int columns;
+		double forcedTime;
 
-		double GetTime(void);
-		unsigned int GetColumnCount(void) const;
+		double GetTime();
+		unsigned int GetColumnCount() const;
 	} buffer;
 
 	const char delimiter;
 	bool headerWritten;
 	std::vector<std::pair<std::string, std::string> > columnHeadings;
 
-	void WriteHeader(void);
+	void WriteHeader();
 
 public:
 	TimeHistoryLog(std::ostream& str, char delimiter = ',');
 	~TimeHistoryLog() {};
 
 	void AddColumn(std::string title, std::string units);
+	void SetNextTimeStamp(const double& time);
 
 	template<typename T>
 	friend TimeHistoryLog& operator<<(TimeHistoryLog& log, T const& value);
