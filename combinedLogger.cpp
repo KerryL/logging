@@ -11,14 +11,11 @@
 // Local headers
 #include "combinedLogger.h"
 
-// utilities headers
-#include "utilities/mutexLocker.h"
-
 //==========================================================================
 // Class:			CombinedLogger
-// Function:		None
+// Function:		Static members
 //
-// Description:		Static member variable initialization.
+// Description:		Static members for CombinedLogger.
 //
 // Input Arguments:
 //		None
@@ -30,8 +27,7 @@
 //		None
 //
 //==========================================================================
-pthread_mutex_t CombinedLogger::mutex = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t CombinedLogger::CombinedStreamBuffer::mutex = PTHREAD_MUTEX_INITIALIZER;
+std::mutex CombinedLogger::logMutex;
 
 //==========================================================================
 // Class:			CombinedLogger
@@ -58,10 +54,6 @@ CombinedLogger::~CombinedLogger()
 		if (logs[i].second)
 			delete logs[i].first;
 	}
-
-	int errorNumber;
-	if ((errorNumber = pthread_mutex_destroy(&mutex)) != 0)
-		std::cout << "Error destroying mutex (" << errorNumber << ")" << std::endl;
 }
 
 //==========================================================================
@@ -84,9 +76,27 @@ CombinedLogger::~CombinedLogger()
 void CombinedLogger::Add(std::ostream* log, bool manageMemory)
 {
 	assert(log);
-	MutexLocker lock(mutex);
+	std::lock_guard<std::mutex> lock(logMutex);
 	logs.push_back(std::make_pair(log, manageMemory));
 }
+
+//==========================================================================
+// Class:			CombinedLogger::CombinedStreamBuffer
+// Function:		Static members
+//
+// Description:		Static members for CombinedLogger::CombinedStreamBuffer.
+//
+// Input Arguments:
+//		None
+//
+// Output Arguments:
+//		None
+//
+// Return Value:
+//		None
+//
+//==========================================================================
+std::mutex CombinedLogger::CombinedStreamBuffer::bufferMutex;
 
 //==========================================================================
 // Class:			CombinedLogger::CombinedStreamBuffer
@@ -106,13 +116,9 @@ void CombinedLogger::Add(std::ostream* log, bool manageMemory)
 //==========================================================================
 CombinedLogger::CombinedStreamBuffer::~CombinedStreamBuffer()
 {
-	std::map<ThreadID, std::stringstream*>::iterator it;
-	for (it = threadBuffer.begin(); it != threadBuffer.end(); it++)
+	auto it(threadBuffer.begin());
+	for (; it != threadBuffer.end(); it++)
 		delete it->second;
-
-	int errorNumber;
-	if ((errorNumber = pthread_mutex_destroy(&mutex)) != 0)
-		std::cout << "Error destroying mutex (" << errorNumber << ")" << std::endl;
 }
 
 //==========================================================================
@@ -138,7 +144,7 @@ int CombinedLogger::CombinedStreamBuffer::overflow(int c)
 {
 	CreateThreadBuffer();
 	if (c != traits_type::eof())
-		*threadBuffer[GetThreadID(pthread_self())] << (char)c;
+		*threadBuffer[std::this_thread::get_id()] << (char)c;
 
 	return c;
 }
@@ -162,22 +168,22 @@ int CombinedLogger::CombinedStreamBuffer::overflow(int c)
 //		int
 //
 //==========================================================================
-int CombinedLogger::CombinedStreamBuffer::sync(void)
+int CombinedLogger::CombinedStreamBuffer::sync()
 {
 	assert(log.logs.size() > 0);// Make sure we didn't forget to add logs
 
 	CreateThreadBuffer();// Before mutex locker, because this might lock the mutex, too
-	MutexLocker lock(mutex);
+	std::lock_guard<std::mutex> lock(bufferMutex);
 			
 	unsigned int i;
 	for (i = 0; i < log.logs.size(); i++)
 	{
-		*log.logs[i].first << threadBuffer[GetThreadID(pthread_self())]->str();
+		*log.logs[i].first << threadBuffer[std::this_thread::get_id()]->str();
 		log.logs[i].first->flush();
 	}
 
 	// Clear out the buffers
-	threadBuffer[GetThreadID(pthread_self())]->str("");
+	threadBuffer[std::this_thread::get_id()]->str("");
 	str("");
 
 	return 0;
@@ -200,38 +206,12 @@ int CombinedLogger::CombinedStreamBuffer::sync(void)
 //		None
 //
 //==========================================================================
-void CombinedLogger::CombinedStreamBuffer::CreateThreadBuffer(void)
+void CombinedLogger::CombinedStreamBuffer::CreateThreadBuffer()
 {
-	if (threadBuffer.find(GetThreadID(pthread_self())) == threadBuffer.end())
+	if (threadBuffer.find(std::this_thread::get_id()) == threadBuffer.end())
 	{
-		MutexLocker lock(mutex);
-		if (threadBuffer.find(GetThreadID(pthread_self())) == threadBuffer.end())
-			threadBuffer[GetThreadID(pthread_self())] = new std::stringstream;
+		std::lock_guard<std::mutex> lock(bufferMutex);
+		if (threadBuffer.find(std::this_thread::get_id()) == threadBuffer.end())
+			threadBuffer[std::this_thread::get_id()] = new std::stringstream;
 	}
-}
-
-//==========================================================================
-// Class:			CombinedLogger::CombinedStreamBuffer
-// Function:		GetThreadID
-//
-// Description:		Returns identifier for a thread.  Added to allow for
-//					cross-platform use.
-//
-// Input Arguments:
-//		thread = const pthread_t&
-//
-// Output Arguments:
-//		None
-//
-// Return Value:
-//		ThreadID
-//
-//==========================================================================
-ThreadID CombinedLogger::CombinedStreamBuffer::GetThreadID(const pthread_t &thread)
-{
-#ifdef _WIN32
-	return thread.p;
-#else
-	return thread;
-#endif
 }
