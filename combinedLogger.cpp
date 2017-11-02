@@ -31,39 +31,12 @@ std::mutex CombinedLogger::logMutex;
 
 //==========================================================================
 // Class:			CombinedLogger
-// Function:		~CombinedLogger
-//
-// Description:		Destructor for CombinedLogger class.
-//
-// Input Arguments:
-//		None
-//
-// Output Arguments:
-//		None
-//
-// Return Value:
-//		None
-//
-//==========================================================================
-CombinedLogger::~CombinedLogger()
-{
-	// No lock here - users must ensure that object is deleted by only one thread!
-	unsigned int i;
-	for (i = 0; i < logs.size(); i++)
-	{
-		if (logs[i].second)
-			delete logs[i].first;
-	}
-}
-
-//==========================================================================
-// Class:			CombinedLogger
 // Function:		Add
 //
 // Description:		Adds a log sink to the vector.
 //
 // Input Arguments:
-//		log				= std::ostream*
+//		log				= std::unique_ptr<std::ostream>
 //		manageMemory	= bool
 //
 // Output Arguments:
@@ -73,11 +46,11 @@ CombinedLogger::~CombinedLogger()
 //		None
 //
 //==========================================================================
-void CombinedLogger::Add(std::ostream* log, bool manageMemory)
+void CombinedLogger::Add(std::unique_ptr<std::ostream> log, bool manageMemory)
 {
 	assert(log);
 	std::lock_guard<std::mutex> lock(logMutex);
-	logs.push_back(std::make_pair(log, manageMemory));
+	logs.push_back(std::make_pair(std::move(log), manageMemory));
 }
 
 //==========================================================================
@@ -97,29 +70,6 @@ void CombinedLogger::Add(std::ostream* log, bool manageMemory)
 //
 //==========================================================================
 std::mutex CombinedLogger::CombinedStreamBuffer::bufferMutex;
-
-//==========================================================================
-// Class:			CombinedLogger::CombinedStreamBuffer
-// Function:		~CombinedStreamBuffer
-//
-// Description:		Destructor for CombinedStreamBuffer class.
-//
-// Input Arguments:
-//		None
-//
-// Output Arguments:
-//		None
-//
-// Return Value:
-//		None
-//
-//==========================================================================
-CombinedLogger::CombinedStreamBuffer::~CombinedStreamBuffer()
-{
-	auto it(threadBuffer.begin());
-	for (; it != threadBuffer.end(); it++)
-		delete it->second;
-}
 
 //==========================================================================
 // Class:			CombinedLogger::CombinedStreamBuffer
@@ -212,6 +162,6 @@ void CombinedLogger::CombinedStreamBuffer::CreateThreadBuffer()
 	{
 		std::lock_guard<std::mutex> lock(bufferMutex);
 		if (threadBuffer.find(std::this_thread::get_id()) == threadBuffer.end())
-			threadBuffer[std::this_thread::get_id()] = new std::stringstream;
+			threadBuffer[std::this_thread::get_id()] = std::make_unique<std::stringstream>();
 	}
 }

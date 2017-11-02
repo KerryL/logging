@@ -15,21 +15,22 @@
 #include <sstream>
 #include <thread>
 #include <mutex>
+#include <memory>
 
 class CombinedLogger : public std::ostream
 {
 public:
-	CombinedLogger() : std::ostream(&buffer), buffer(*this) {};
-	virtual ~CombinedLogger();
+	CombinedLogger() : std::ostream(&buffer), buffer(*this) {}
+	virtual ~CombinedLogger() = default;
 
-	void Add(std::ostream* log, bool manageMemory = true);
+	void Add(std::unique_ptr<std::ostream> log, bool manageMemory = true);
 
 private:
 	class CombinedStreamBuffer : public std::stringbuf
 	{
 	public:
-		CombinedStreamBuffer(CombinedLogger &log) : log(log) {};
-		virtual ~CombinedStreamBuffer();
+		CombinedStreamBuffer(CombinedLogger &log) : log(log) {}
+		virtual ~CombinedStreamBuffer() = default;
 
 	protected:
 		virtual int overflow(int c);
@@ -37,14 +38,14 @@ private:
 
 	private:
 		CombinedLogger &log;
-		std::map<std::thread::id, std::stringstream*> threadBuffer;
+		std::map<std::thread::id, std::unique_ptr<std::stringstream>> threadBuffer;
 		static std::mutex bufferMutex;
 		void CreateThreadBuffer();
 	} buffer;
 
 	static std::mutex logMutex;
 
-	std::vector<std::pair<std::ostream*, bool> > logs;
+	std::vector<std::pair<std::unique_ptr<std::ostream>, bool>> logs;
 };
 
 #endif// COMBINED_LOGGER_H_
