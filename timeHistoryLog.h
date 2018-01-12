@@ -50,7 +50,7 @@ private:
 
 		ULongLong start;
 		unsigned int columns;
-		double forcedTime;
+		double forcedTime = 0.0;
 
 		double GetTime();
 		unsigned int GetColumnCount() const;
@@ -66,7 +66,7 @@ public:
 	TimeHistoryLog(std::ostream& str, char delimiter = ',');
 	~TimeHistoryLog() {};
 
-	void AddColumn(std::string title, std::string units);
+	void AddColumn(const std::string& title, const std::string& units);
 	void SetNextTimeStamp(const double& time);
 
 	template<typename T>

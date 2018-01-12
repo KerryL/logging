@@ -17,7 +17,7 @@ private:
 	class LoggerStreamBuffer : public std::stringbuf
 	{
 	public:
-		LoggerStreamBuffer(std::ostream &str) : output(str) {};
+		explicit LoggerStreamBuffer(std::ostream &str) : output(str) {};
 		~LoggerStreamBuffer() {};
 
 		virtual int sync();
@@ -28,7 +28,7 @@ private:
 	} buffer;
 
 public:
-	Logger(std::ostream& str) : std::ostream(&buffer), buffer(str) {};
+	explicit Logger(std::ostream& str) : std::ostream(&buffer), buffer(str) {};
 	virtual ~Logger() {};
 };
 

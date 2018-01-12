@@ -85,8 +85,8 @@ void TimeHistoryLog::WriteHeader()
 // Description:		Adds information for the next column to the string.
 //
 // Input Arguments:
-//		title	= std::string
-//		units	= std::string
+//		title	= const std::string&
+//		units	= const std::string&
 //
 // Output Arguments:
 //		None
@@ -95,7 +95,7 @@ void TimeHistoryLog::WriteHeader()
 //		None
 //
 //==========================================================================
-void TimeHistoryLog::AddColumn(std::string title, std::string units)
+void TimeHistoryLog::AddColumn(const std::string& title, const std::string& units)
 {
 	assert(!headerWritten);
 	columnHeadings.push_back(std::make_pair(title, "[" + units + "]"));

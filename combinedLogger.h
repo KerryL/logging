@@ -20,7 +20,7 @@
 class CombinedLogger : public std::ostream
 {
 public:
-	CombinedLogger() : std::ostream(&buffer), buffer(*this) {}
+	explicit CombinedLogger() : std::ostream(&buffer), buffer(*this) {}
 	virtual ~CombinedLogger() = default;
 
 	void Add(std::unique_ptr<std::ostream> log, bool manageMemory = true);
@@ -29,7 +29,7 @@ private:
 	class CombinedStreamBuffer : public std::stringbuf
 	{
 	public:
-		CombinedStreamBuffer(CombinedLogger &log) : log(log) {}
+		explicit CombinedStreamBuffer(CombinedLogger &log) : log(log) {}
 		virtual ~CombinedStreamBuffer() = default;
 
 	protected:
