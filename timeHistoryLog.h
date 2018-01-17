@@ -11,7 +11,7 @@
 // Standard C++ headers
 #include <iostream>
 #include <vector>
-#include <ctime>
+#include <chrono>
 
 // OS headers
 #ifdef _WIN32
@@ -48,7 +48,7 @@ private:
 		bool started;
 		bool forcedTimeStamp;
 
-		ULongLong start;
+		std::chrono::steady_clock::time_point start;
 		unsigned int columns;
 		double forcedTime = 0.0;
 

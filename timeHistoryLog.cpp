@@ -150,11 +150,7 @@ TimeHistoryLog::TimeHistoryStreamBuffer::TimeHistoryStreamBuffer(std::ostream &s
 //==========================================================================
 double TimeHistoryLog::TimeHistoryStreamBuffer::GetTime()
 {
-	double elapsed;
-	ULongLong now(TimingUtility::GetMillisecondsSinceEpoch());
-
-	elapsed = static_cast<double>((now - start) * 1.0e-3);
-	return elapsed;
+	return TimingUtility::FractionalSeconds(TimingUtility::Clock::now() - start).count();
 }
 
 //==========================================================================
@@ -177,7 +173,7 @@ double TimeHistoryLog::TimeHistoryStreamBuffer::GetTime()
 void TimeHistoryLog::TimeHistoryStreamBuffer::MarkStartTime()
 {
 	assert(!started);
-	start = TimingUtility::GetMillisecondsSinceEpoch();
+	start = TimingUtility::Clock::now();
 	started = true;
 }
 
