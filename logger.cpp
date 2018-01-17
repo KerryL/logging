@@ -29,8 +29,8 @@
 //==========================================================================
 std::string Logger::LoggerStreamBuffer::GetTimeStamp()
 {
-	time_t now(time(NULL));
-	struct tm* timeInfo = localtime(&now);
+	const time_t now(time(nullptr));
+	const struct tm* timeInfo(localtime(&now));
 
 	std::stringstream timeStamp;
 	timeStamp.fill('0');

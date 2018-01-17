@@ -23,7 +23,8 @@ public:
 	explicit CombinedLogger() : std::ostream(&buffer), buffer(*this) {}
 	virtual ~CombinedLogger() = default;
 
-	void Add(std::unique_ptr<std::ostream> log, bool manageMemory = true);
+	void Add(std::unique_ptr<std::ostream> log);
+	void Add(std::ostream& log);
 
 private:
 	class CombinedStreamBuffer : public std::stringbuf
@@ -45,7 +46,8 @@ private:
 
 	static std::mutex logMutex;
 
-	std::vector<std::pair<std::unique_ptr<std::ostream>, bool>> logs;
+	std::vector<std::unique_ptr<std::ostream>> ownedLogs;
+	std::vector<std::ostream*> allLogs;
 };
 
 #endif// COMBINED_LOGGER_H_

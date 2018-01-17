@@ -33,11 +33,10 @@ std::mutex CombinedLogger::logMutex;
 // Class:			CombinedLogger
 // Function:		Add
 //
-// Description:		Adds a log sink to the vector.
+// Description:		Adds a log sink to the vector.  Takes ownership of the log.
 //
 // Input Arguments:
-//		log				= std::unique_ptr<std::ostream>
-//		manageMemory	= bool
+//		log		= std::unique_ptr<std::ostream>
 //
 // Output Arguments:
 //		None
@@ -46,11 +45,35 @@ std::mutex CombinedLogger::logMutex;
 //		None
 //
 //==========================================================================
-void CombinedLogger::Add(std::unique_ptr<std::ostream> log, bool manageMemory)
+void CombinedLogger::Add(std::unique_ptr<std::ostream> log)
 {
 	assert(log);
 	std::lock_guard<std::mutex> lock(logMutex);
-	logs.push_back(std::make_pair(std::move(log), manageMemory));
+	ownedLogs.push_back(std::move(log));
+	allLogs.push_back(ownedLogs.back().get());
+}
+
+//==========================================================================
+// Class:			CombinedLogger
+// Function:		Add
+//
+// Description:		Adds a log sink to the vector.  Caller retains ownership.
+//
+// Input Arguments:
+//		log		= std::ostream&
+//
+// Output Arguments:
+//		None
+//
+// Return Value:
+//		None
+//
+//==========================================================================
+void CombinedLogger::Add(std::ostream& log)
+{
+	assert(log);
+	std::lock_guard<std::mutex> lock(logMutex);
+	allLogs.push_back(&log);
 }
 
 //==========================================================================
@@ -120,16 +143,15 @@ int CombinedLogger::CombinedStreamBuffer::overflow(int c)
 //==========================================================================
 int CombinedLogger::CombinedStreamBuffer::sync()
 {
-	assert(log.logs.size() > 0);// Make sure we didn't forget to add logs
+	assert(log.allLogs.size() > 0);// Make sure we didn't forget to add logs
 
 	CreateThreadBuffer();// Before mutex locker, because this might lock the mutex, too
 	std::lock_guard<std::mutex> lock(bufferMutex);
-			
-	unsigned int i;
-	for (i = 0; i < log.logs.size(); i++)
+
+	for (auto& l : log.allLogs)
 	{
-		*log.logs[i].first << threadBuffer[std::this_thread::get_id()]->str();
-		log.logs[i].first->flush();
+		*l << threadBuffer[std::this_thread::get_id()]->str();
+		l->flush();
 	}
 
 	// Clear out the buffers
