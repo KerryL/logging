@@ -30,7 +30,7 @@ private:
 	class CombinedStreamBuffer : public std::stringbuf
 	{
 	public:
-		explicit CombinedStreamBuffer(CombinedLogger &log) : log(log) {}
+		explicit CombinedStreamBuffer(CombinedLogger &log);
 		virtual ~CombinedStreamBuffer() = default;
 
 	protected:
