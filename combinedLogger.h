@@ -34,17 +34,17 @@ private:
 		virtual ~CombinedStreamBuffer() = default;
 
 	protected:
-		virtual int overflow(int c);
-		virtual int sync();
+		int overflow(int c) override;
+		int sync() override;
 
 	private:
 		CombinedLogger &log;
-		std::map<std::thread::id, std::unique_ptr<std::stringstream>> threadBuffer;
-		static std::mutex bufferMutex;
+		std::map<std::thread::id, std::unique_ptr<std::ostringstream>> threadBuffer;
+		std::mutex bufferMutex;
 		void CreateThreadBuffer();
 	} buffer;
 
-	static std::mutex logMutex;
+	std::mutex logMutex;
 
 	std::vector<std::unique_ptr<std::ostream>> ownedLogs;
 	std::vector<std::ostream*> allLogs;

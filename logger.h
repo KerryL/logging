@@ -19,7 +19,7 @@ private:
 	public:
 		explicit LoggerStreamBuffer(std::ostream &str) : output(str) {}
 
-		virtual int sync();
+		int sync() override;
 
 	private:
 		std::ostream& output;

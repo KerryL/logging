@@ -13,24 +13,6 @@
 
 //==========================================================================
 // Class:			CombinedLogger
-// Function:		Static members
-//
-// Description:		Static members for CombinedLogger.
-//
-// Input Arguments:
-//		None
-//
-// Output Arguments:
-//		None
-//
-// Return Value:
-//		None
-//
-//==========================================================================
-std::mutex CombinedLogger::logMutex;
-
-//==========================================================================
-// Class:			CombinedLogger
 // Function:		Add
 //
 // Description:		Adds a log sink to the vector.  Takes ownership of the log.
@@ -78,24 +60,6 @@ void CombinedLogger::Add(std::ostream& log)
 
 //==========================================================================
 // Class:			CombinedLogger::CombinedStreamBuffer
-// Function:		Static members
-//
-// Description:		Static members for CombinedLogger::CombinedStreamBuffer.
-//
-// Input Arguments:
-//		None
-//
-// Output Arguments:
-//		None
-//
-// Return Value:
-//		None
-//
-//==========================================================================
-std::mutex CombinedLogger::CombinedStreamBuffer::bufferMutex;
-
-//==========================================================================
-// Class:			CombinedLogger::CombinedStreamBuffer
 // Function:		overflow
 //
 // Description:		Override of the standard overflow method.  Called when
@@ -117,7 +81,13 @@ int CombinedLogger::CombinedStreamBuffer::overflow(int c)
 {
 	CreateThreadBuffer();
 	if (c != traits_type::eof())
-		*threadBuffer[std::this_thread::get_id()] << (char)c;
+	{
+		// Allow other threads to continue to buffer to the stream, even if
+		// another thread is writing to the logs in sync() (so we don't lock
+		// the buffer mutex here)
+		const auto tb(threadBuffer);
+		*tb.find(std::this_thread::get_id())->second << static_cast<char>(c);
+	}
 
 	return c;
 }
@@ -145,20 +115,28 @@ int CombinedLogger::CombinedStreamBuffer::sync()
 {
 	assert(log.allLogs.size() > 0);// Make sure we didn't forget to add logs
 
+	int result(0);
+	const std::thread::id id(std::this_thread::get_id());
+
 	CreateThreadBuffer();// Before mutex locker, because this might lock the mutex, too
 	std::lock_guard<std::mutex> lock(bufferMutex);
 
-	for (auto& l : log.allLogs)
 	{
-		*l << threadBuffer[std::this_thread::get_id()]->str();
-		l->flush();
+		std::lock_guard<std::mutex> logLock(log.logMutex);
+
+		for (auto& l : log.allLogs)
+		{
+			if ((*l << threadBuffer[id]->str()).fail())
+				result = -1;
+			l->flush();
+		}
 	}
 
-	// Clear out the buffers
-	threadBuffer[std::this_thread::get_id()]->str("");
+	// Clear out the buffer
+	threadBuffer[id]->str("");
 	str("");
 
-	return 0;
+	return result;
 }
 
 //==========================================================================
@@ -180,10 +158,11 @@ int CombinedLogger::CombinedStreamBuffer::sync()
 //==========================================================================
 void CombinedLogger::CombinedStreamBuffer::CreateThreadBuffer()
 {
-	if (threadBuffer.find(std::this_thread::get_id()) == threadBuffer.end())
+	const std::thread::id id(std::this_thread::get_id());
+	if (threadBuffer.find(id) == threadBuffer.end())
 	{
 		std::lock_guard<std::mutex> lock(bufferMutex);
-		if (threadBuffer.find(std::this_thread::get_id()) == threadBuffer.end())
-			threadBuffer[std::this_thread::get_id()] = std::make_unique<std::stringstream>();
+		if (threadBuffer.find(id) == threadBuffer.end())
+			threadBuffer[id] = std::make_unique<std::ostringstream>();
 	}
 }
