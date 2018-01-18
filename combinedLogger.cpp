@@ -85,7 +85,7 @@ int CombinedLogger::CombinedStreamBuffer::overflow(int c)
 		// Allow other threads to continue to buffer to the stream, even if
 		// another thread is writing to the logs in sync() (so we don't lock
 		// the buffer mutex here)
-		const auto tb(threadBuffer);
+		const auto& tb(threadBuffer);
 		*tb.find(std::this_thread::get_id())->second << static_cast<char>(c);
 	}
 
