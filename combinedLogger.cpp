@@ -60,29 +60,6 @@ void CombinedLogger::Add(std::ostream& log)
 
 //==========================================================================
 // Class:			CombinedLogger::CombinedStreamBuffer
-// Function:		CombinedStreamBuffer
-//
-// Description:		Constructor for CombinedStreamBuffer class.
-//
-// Input Arguments:
-//		log		= CombinedLogger&
-//
-// Output Arguments:
-//		None
-//
-// Return Value:
-//		None
-//
-//==========================================================================
-CombinedLogger::CombinedStreamBuffer::CombinedStreamBuffer(CombinedLogger &log) : log(log)
-{
-	// Apparently required on some platforms to prevent use
-	// of std::stringbuf's own internal buffer
-	setp(nullptr, nullptr);
-}
-
-//==========================================================================
-// Class:			CombinedLogger::CombinedStreamBuffer
 // Function:		overflow
 //
 // Description:		Override of the standard overflow method.  Called when
@@ -157,7 +134,10 @@ int CombinedLogger::CombinedStreamBuffer::sync()
 
 	// Clear out the buffer
 	threadBuffer[id]->str("");
-	str("");
+
+	// Verify that we didn't do something to allow the normal internal
+	// buffer to be touched - all input should go to our controlled buffers
+	assert(str().empty());
 
 	return result;
 }
