@@ -16,6 +16,7 @@
 #include <thread>
 #include <mutex>
 #include <memory>
+#include <chrono>
 
 class CombinedLogger : public std::ostream
 {
@@ -39,9 +40,24 @@ private:
 
 	private:
 		CombinedLogger &log;
-		std::map<std::thread::id, std::unique_ptr<std::ostringstream>> threadBuffer;
+
+		typedef std::chrono::steady_clock Clock;
+		struct Buffer
+		{
+			std::ostringstream ss;
+			std::mutex mutex;
+			Clock::time_point lastFlushTime = Clock::now();
+		};
+
+		std::map<std::thread::id, std::unique_ptr<Buffer>> threadBuffer;
 		std::mutex bufferMutex;
 		void CreateThreadBuffer();
+
+		static const Clock::duration idleThreadTimeThreshold;
+		static const unsigned int maxCleanupCount;
+		unsigned int cleanupCount = 0;
+
+		void CleanupBuffers();
 	} buffer;
 
 	std::mutex logMutex;

@@ -7,6 +7,7 @@
 
 // Standard C++ headers
 #include <cassert>
+#include <algorithm>
 
 // Local headers
 #include "combinedLogger.h"
@@ -60,6 +61,26 @@ void CombinedLogger::Add(std::ostream& log)
 
 //==========================================================================
 // Class:			CombinedLogger::CombinedStreamBuffer
+// Function:		Static definitions
+//
+// Description:		Static member definitions.
+//
+// Input Arguments:
+//		None
+//
+// Output Arguments:
+//		None
+//
+// Return Value:
+//		None
+//
+//==========================================================================
+const unsigned int CombinedLogger::CombinedStreamBuffer::maxCleanupCount(1000);
+const CombinedLogger::CombinedStreamBuffer::Clock::duration
+	CombinedLogger::CombinedStreamBuffer::idleThreadTimeThreshold(std::chrono::minutes(5));
+
+//==========================================================================
+// Class:			CombinedLogger::CombinedStreamBuffer
 // Function:		overflow
 //
 // Description:		Override of the standard overflow method.  Called when
@@ -79,14 +100,15 @@ void CombinedLogger::Add(std::ostream& log)
 //==========================================================================
 int CombinedLogger::CombinedStreamBuffer::overflow(int c)
 {
-	CreateThreadBuffer();
+	CreateThreadBuffer();// TODO:  after this call, our local mutex should be locked!!
 	if (c != traits_type::eof())
 	{
 		// Allow other threads to continue to buffer to the stream, even if
 		// another thread is writing to the logs in sync() (so we don't lock
 		// the buffer mutex here)
+		// TODO:  lock local buffer mutex first
 		const auto& tb(threadBuffer);
-		*tb.find(std::this_thread::get_id())->second << static_cast<char>(c);
+		tb.find(std::this_thread::get_id())->second->ss << static_cast<char>(c);
 	}
 
 	return c;
@@ -118,7 +140,7 @@ int CombinedLogger::CombinedStreamBuffer::sync()
 	int result(0);
 	const std::thread::id id(std::this_thread::get_id());
 
-	CreateThreadBuffer();// Before mutex locker, because this might lock the mutex, too
+	CreateThreadBuffer();// Before locking bufferMutex, because this might lock the mutex, too// TODO:  after this call, our local mutex should be locked!!
 	std::lock_guard<std::mutex> lock(bufferMutex);
 
 	{
@@ -126,14 +148,17 @@ int CombinedLogger::CombinedStreamBuffer::sync()
 
 		for (auto& l : log.allLogs)
 		{
-			if ((*l << threadBuffer[id]->str()).fail())
+			if ((*l << threadBuffer[id]->ss.str()).fail())
 				result = -1;
 			l->flush();
 		}
 	}
 
+	if (++cleanupCount == maxCleanupCount)
+		CleanupBuffers();
+
 	// Clear out the buffer
-	threadBuffer[id]->str("");
+	threadBuffer[id]->ss.str("");
 
 	// Verify that we didn't do something to allow the normal internal
 	// buffer to be touched - all input should go to our controlled buffers
@@ -165,7 +190,46 @@ void CombinedLogger::CombinedStreamBuffer::CreateThreadBuffer()
 	if (threadBuffer.find(id) == threadBuffer.end())
 	{
 		std::lock_guard<std::mutex> lock(bufferMutex);
-		if (threadBuffer.find(id) == threadBuffer.end())
-			threadBuffer[id] = std::make_unique<std::ostringstream>();
+		if (threadBuffer.find(id) == threadBuffer.end())// TODO:  Not sure we need this check
+			threadBuffer[id] = std::make_unique<Buffer>();
 	}
+}
+
+//==========================================================================
+// Class:			CombinedLogger::CombinedStreamBuffer
+// Function:		CleanupBuffers
+//
+// Description:		Removes buffers from the map if the thread is no joinable.  This
+//					risks an unnecessary removal/recration of buffers for threads
+//					that are still actively writing to the log, but it reduces
+//					the risk of growing the size of the map as a result of dead
+//					threads.
+//
+// Input Arguments:
+//		None
+//
+// Output Arguments:
+//		None
+//
+// Return Value:
+//		None
+//
+//==========================================================================
+void CombinedLogger::CombinedStreamBuffer::CleanupBuffers()
+{
+	// NOTE:  Caller is assumed to have already locked bufferMutex
+	std::vector<std::lock_guard<std::mutex>> locks;// TODO:  Is this OK?  Or do we also need to move the associated mutex objects?
+	const Clock::time_point now(Clock::now());
+	threadBuffer.erase(std::remove_if(threadBuffer.begin(), threadBuffer.end(),
+		[&locks, &now, this](const std::pair<std::thread::id, std::unique_ptr<Buffer>>& b)
+	{
+		std::lock_guard<std::mutex> lock(b.second->mutex);
+		if (b.second->ss.str().empty() && now - b.second->lastFlushTime > idleThreadTimeThreshold)
+		{
+			locks.push_back(std::move(lock));
+			return true;
+		}
+
+		return false;
+	}));
 }
