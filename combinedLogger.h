@@ -47,14 +47,14 @@ private:
 			Buffer(std::unique_ptr<std::lock_guard<std::mutex>>& mutex);
 
 			std::ostringstream ss;
-			std::mutex mutex;
+			std::mutex mutex;// protectes ss and this
 			Clock::time_point lastFlushTime = Clock::now();
 		};
 
 		typedef std::map<std::thread::id, std::unique_ptr<Buffer>> BufferMap;
 		BufferMap threadBuffer;
-		std::mutex bufferMutex;
-		std::unique_ptr<std::lock_guard<std::mutex>> CreateThreadBuffer();
+		std::mutex bufferMapMutex;// Protects threadBuffer
+		std::unique_ptr<std::lock_guard<std::mutex>> CreateThreadBuffer(const bool& bufferMapMutexAlreadyLocked = false);
 
 		static const Clock::duration idleThreadTimeThreshold;
 		static const unsigned int maxCleanupCount;
@@ -63,7 +63,7 @@ private:
 		void CleanupBuffers();
 	} buffer;
 
-	std::mutex logMutex;
+	std::mutex logMutex;// Protects ownedLogs and allLogs
 
 	std::vector<std::unique_ptr<std::ostream>> ownedLogs;
 	std::vector<std::ostream*> allLogs;

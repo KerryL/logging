@@ -77,7 +77,7 @@ void CombinedLogger::Add(std::ostream& log)
 //==========================================================================
 const unsigned int CombinedLogger::CombinedStreamBuffer::maxCleanupCount(10);
 const CombinedLogger::CombinedStreamBuffer::Clock::duration
-	CombinedLogger::CombinedStreamBuffer::idleThreadTimeThreshold(std::chrono::minutes(1));
+	CombinedLogger::CombinedStreamBuffer::idleThreadTimeThreshold(std::chrono::minutes(0));
 
 //==========================================================================
 // Class:			CombinedLogger::CombinedStreamBuffer::Buffer
@@ -128,7 +128,6 @@ int CombinedLogger::CombinedStreamBuffer::overflow(int c)
 		// Allow other threads to continue to buffer to the stream, even if
 		// another thread is writing to the logs in sync() (so we don't lock
 		// the buffer mutex here)
-		// TODO:  lock local buffer mutex first
 		const auto& tb(threadBuffer);
 		tb.find(std::this_thread::get_id())->second->ss << static_cast<char>(c);
 	}
@@ -162,8 +161,8 @@ int CombinedLogger::CombinedStreamBuffer::sync()
 	int result(0);
 	const std::thread::id id(std::this_thread::get_id());
 
-	auto localLock(CreateThreadBuffer());// Before locking bufferMutex, because this might lock the mutex, too
-	std::lock_guard<std::mutex> lock(bufferMutex);
+	std::lock_guard<std::mutex> lock(bufferMapMutex);
+	auto localLock(CreateThreadBuffer(true));
 
 	{
 		std::lock_guard<std::mutex> logLock(log.logMutex);
@@ -193,7 +192,7 @@ int CombinedLogger::CombinedStreamBuffer::sync()
 //					and creates the buffer if it doesn't exist.
 //
 // Input Arguments:
-//		None
+//		bufferMapMutexAlreadyLocked = const bool&
 //
 // Output Arguments:
 //		None
@@ -202,15 +201,20 @@ int CombinedLogger::CombinedStreamBuffer::sync()
 //		None
 //
 //==========================================================================
-std::unique_ptr<std::lock_guard<std::mutex>> CombinedLogger::CombinedStreamBuffer::CreateThreadBuffer()
+std::unique_ptr<std::lock_guard<std::mutex>> CombinedLogger::CombinedStreamBuffer::CreateThreadBuffer(const bool& bufferMapMutexAlreadyLocked)
 {
 	std::unique_ptr<std::lock_guard<std::mutex>> returnLock;
 
 	const std::thread::id id(std::this_thread::get_id());
 	if (threadBuffer.find(id) == threadBuffer.end())
 	{
-		std::lock_guard<std::mutex> lock(bufferMutex);
-		threadBuffer[id] = std::make_unique<Buffer>(returnLock);
+		if (!bufferMapMutexAlreadyLocked)
+		{
+			std::lock_guard<std::mutex> lock(bufferMapMutex);
+			threadBuffer[id] = std::make_unique<Buffer>(returnLock);
+		}
+		else
+			threadBuffer[id] = std::make_unique<Buffer>(returnLock);
 	}
 	else
 		returnLock = std::make_unique<std::lock_guard<std::mutex>>(threadBuffer[id]->mutex);
