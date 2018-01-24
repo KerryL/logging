@@ -75,9 +75,31 @@ void CombinedLogger::Add(std::ostream& log)
 //		None
 //
 //==========================================================================
-const unsigned int CombinedLogger::CombinedStreamBuffer::maxCleanupCount(1000);
+const unsigned int CombinedLogger::CombinedStreamBuffer::maxCleanupCount(10);
 const CombinedLogger::CombinedStreamBuffer::Clock::duration
-	CombinedLogger::CombinedStreamBuffer::idleThreadTimeThreshold(std::chrono::minutes(5));
+	CombinedLogger::CombinedStreamBuffer::idleThreadTimeThreshold(std::chrono::minutes(1));
+
+//==========================================================================
+// Class:			CombinedLogger::CombinedStreamBuffer::Buffer
+// Function:		Buffer
+//
+// Description:		Constructor for buffer class.
+//
+// Input Arguments:
+//		lock	= std::unique_ptr<std::lock_guard<std::mutex>>&
+//
+// Output Arguments:
+//		None
+//
+// Return Value:
+//		None
+//
+//==========================================================================
+CombinedLogger::CombinedStreamBuffer::Buffer::Buffer(
+	std::unique_ptr<std::lock_guard<std::mutex>>& lock)
+{
+	lock = std::make_unique<std::lock_guard<std::mutex>>(mutex);
+}
 
 //==========================================================================
 // Class:			CombinedLogger::CombinedStreamBuffer
@@ -100,7 +122,7 @@ const CombinedLogger::CombinedStreamBuffer::Clock::duration
 //==========================================================================
 int CombinedLogger::CombinedStreamBuffer::overflow(int c)
 {
-	CreateThreadBuffer();// TODO:  after this call, our local mutex should be locked!!
+	auto lock(CreateThreadBuffer());// TODO:  Improve efficiency?  Instead of locking/unlocking for every character?
 	if (c != traits_type::eof())
 	{
 		// Allow other threads to continue to buffer to the stream, even if
@@ -140,7 +162,7 @@ int CombinedLogger::CombinedStreamBuffer::sync()
 	int result(0);
 	const std::thread::id id(std::this_thread::get_id());
 
-	CreateThreadBuffer();// Before locking bufferMutex, because this might lock the mutex, too// TODO:  after this call, our local mutex should be locked!!
+	auto localLock(CreateThreadBuffer());// Before locking bufferMutex, because this might lock the mutex, too
 	std::lock_guard<std::mutex> lock(bufferMutex);
 
 	{
@@ -159,10 +181,6 @@ int CombinedLogger::CombinedStreamBuffer::sync()
 
 	// Clear out the buffer
 	threadBuffer[id]->ss.str("");
-
-	// Verify that we didn't do something to allow the normal internal
-	// buffer to be touched - all input should go to our controlled buffers
-	assert(str().empty());
 
 	return result;
 }
@@ -184,15 +202,20 @@ int CombinedLogger::CombinedStreamBuffer::sync()
 //		None
 //
 //==========================================================================
-void CombinedLogger::CombinedStreamBuffer::CreateThreadBuffer()
+std::unique_ptr<std::lock_guard<std::mutex>> CombinedLogger::CombinedStreamBuffer::CreateThreadBuffer()
 {
+	std::unique_ptr<std::lock_guard<std::mutex>> returnLock;
+
 	const std::thread::id id(std::this_thread::get_id());
 	if (threadBuffer.find(id) == threadBuffer.end())
 	{
 		std::lock_guard<std::mutex> lock(bufferMutex);
-		if (threadBuffer.find(id) == threadBuffer.end())// TODO:  Not sure we need this check
-			threadBuffer[id] = std::make_unique<Buffer>();
+		threadBuffer[id] = std::make_unique<Buffer>(returnLock);
 	}
+	else
+		returnLock = std::make_unique<std::lock_guard<std::mutex>>(threadBuffer[id]->mutex);
+
+	return returnLock;
 }
 
 //==========================================================================
@@ -218,12 +241,15 @@ void CombinedLogger::CombinedStreamBuffer::CreateThreadBuffer()
 void CombinedLogger::CombinedStreamBuffer::CleanupBuffers()
 {
 	// NOTE:  Caller is assumed to have already locked bufferMutex
-	std::vector<std::lock_guard<std::mutex>> locks;// TODO:  Is this OK?  Or do we also need to move the associated mutex objects?
+	std::vector<std::unique_lock<std::mutex>> locks;// TODO:  Is this OK?  Or do we also need to move the associated mutex objects?
 	const Clock::time_point now(Clock::now());
-	threadBuffer.erase(std::remove_if(threadBuffer.begin(), threadBuffer.end(),
-		[&locks, &now, this](const std::pair<std::thread::id, std::unique_ptr<Buffer>>& b)
+
+	auto needsCleanup([&locks, &now, this](const BufferMap::value_type& b)
 	{
-		std::lock_guard<std::mutex> lock(b.second->mutex);
+		std::unique_lock<std::mutex> lock(b.second->mutex, std::try_to_lock);
+		if (!lock.owns_lock())// Failed to lock mutex - buffer must still be active
+			return false;
+
 		if (b.second->ss.str().empty() && now - b.second->lastFlushTime > idleThreadTimeThreshold)
 		{
 			locks.push_back(std::move(lock));
@@ -231,5 +257,14 @@ void CombinedLogger::CombinedStreamBuffer::CleanupBuffers()
 		}
 
 		return false;
-	}));
+	});
+
+	auto it(threadBuffer.begin());
+	for (; it != threadBuffer.end();)
+	{
+		if (needsCleanup(*it))
+			it = threadBuffer.erase(it);
+		else
+			++it;
+	}
 }

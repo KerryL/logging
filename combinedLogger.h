@@ -28,7 +28,7 @@ public:
 	void Add(std::ostream& log);
 
 private:
-	class CombinedStreamBuffer : public std::stringbuf
+	class CombinedStreamBuffer : public std::streambuf
 	{
 	public:
 		explicit CombinedStreamBuffer(CombinedLogger &log) : log(log) {}
@@ -44,14 +44,17 @@ private:
 		typedef std::chrono::steady_clock Clock;
 		struct Buffer
 		{
+			Buffer(std::unique_ptr<std::lock_guard<std::mutex>>& mutex);
+
 			std::ostringstream ss;
 			std::mutex mutex;
 			Clock::time_point lastFlushTime = Clock::now();
 		};
 
-		std::map<std::thread::id, std::unique_ptr<Buffer>> threadBuffer;
+		typedef std::map<std::thread::id, std::unique_ptr<Buffer>> BufferMap;
+		BufferMap threadBuffer;
 		std::mutex bufferMutex;
-		void CreateThreadBuffer();
+		std::unique_ptr<std::lock_guard<std::mutex>> CreateThreadBuffer();
 
 		static const Clock::duration idleThreadTimeThreshold;
 		static const unsigned int maxCleanupCount;
