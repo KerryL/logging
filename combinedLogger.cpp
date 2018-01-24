@@ -75,9 +75,9 @@ void CombinedLogger::Add(std::ostream& log)
 //		None
 //
 //==========================================================================
-const unsigned int CombinedLogger::CombinedStreamBuffer::maxCleanupCount(10);
+const unsigned int CombinedLogger::CombinedStreamBuffer::maxCleanupCount(100);
 const CombinedLogger::CombinedStreamBuffer::Clock::duration
-	CombinedLogger::CombinedStreamBuffer::idleThreadTimeThreshold(std::chrono::minutes(0));
+	CombinedLogger::CombinedStreamBuffer::idleThreadTimeThreshold(std::chrono::minutes(2));
 
 //==========================================================================
 // Class:			CombinedLogger::CombinedStreamBuffer::Buffer
@@ -176,7 +176,10 @@ int CombinedLogger::CombinedStreamBuffer::sync()
 	}
 
 	if (++cleanupCount == maxCleanupCount)
+	{
 		CleanupBuffers();
+		cleanupCount = 0;
+	}
 
 	// Clear out the buffer
 	threadBuffer[id]->ss.str("");
