@@ -40,7 +40,7 @@ private:
 
 	protected:
 		typedef typename std::basic_streambuf<typename StreamType::char_type>::int_type IntType;
-		typename IntType overflow(IntType c) override;
+		IntType overflow(IntType c) override;
 		int sync() override;
 
 	private:
@@ -142,7 +142,7 @@ void CombinedLogger<StreamType>::Add(StreamType& log)
 template<class StreamType>
 const unsigned int CombinedLogger<StreamType>::CombinedStreamBuffer::maxCleanupCount(100);
 template<class StreamType>
-const CombinedLogger<StreamType>::CombinedStreamBuffer::Clock::duration
+const std::chrono::steady_clock::duration
 	CombinedLogger<StreamType>::CombinedStreamBuffer::idleThreadTimeThreshold(std::chrono::minutes(2));
 
 //==========================================================================
@@ -191,7 +191,7 @@ template<class StreamType>
 typename CombinedLogger<StreamType>::CombinedStreamBuffer::IntType CombinedLogger<StreamType>::CombinedStreamBuffer::overflow(IntType c)
 {
 	auto lock(CreateThreadBuffer());// TODO:  Improve efficiency?  Instead of locking/unlocking for every character?
-	if (c != traits_type::eof())
+	if (c != StreamType::traits_type::eof())
 	{
 		// Allow other threads to continue to buffer to the stream, even if
 		// another thread is writing to the logs in sync() (so we don't lock
@@ -322,7 +322,7 @@ void CombinedLogger<StreamType>::CombinedStreamBuffer::CleanupBuffers()
 	std::vector<std::unique_lock<std::mutex>> locks;// TODO:  Is this OK?  Or do we also need to move the associated mutex objects?
 	const Clock::time_point now(Clock::now());
 
-	auto needsCleanup([&locks, &now, this](const BufferMap::value_type& b)
+	auto needsCleanup([&locks, &now, this](const typename BufferMap::value_type& b)
 	{
 		std::unique_lock<std::mutex> lock(b.second->mutex, std::try_to_lock);
 		if (!lock.owns_lock())// Failed to lock mutex - buffer must still be active
