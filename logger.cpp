@@ -24,15 +24,15 @@
 //		None
 //
 // Return Value:
-//		std::string containing the formatted time stamp
+//		UString::String containing the formatted time stamp
 //
 //==========================================================================
-std::string Logger::LoggerStreamBuffer::GetTimeStamp()
+UString::String Logger::LoggerStreamBuffer::GetTimeStamp()
 {
 	const time_t now(time(nullptr));
 	const struct tm* timeInfo(localtime(&now));
 
-	std::stringstream timeStamp;
+	UString::OStringStream timeStamp;
 	timeStamp.fill('0');
 	timeStamp << timeInfo->tm_year + 1900 << "-"
 		<< std::setw(2) << timeInfo->tm_mon + 1 << "-"
@@ -64,7 +64,7 @@ std::string Logger::LoggerStreamBuffer::GetTimeStamp()
 int Logger::LoggerStreamBuffer::sync()
 {
 	output << GetTimeStamp() << " : " << str();
-	str("");
+	str(_T(""));
 	output.flush();
 	return 0;
 }

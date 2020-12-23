@@ -7,27 +7,30 @@
 #ifndef LOGGER_H_
 #define LOGGER_H_
 
+// utilities headers
+#include <utilities/uString.h>
+
 // Standard C++ headers
 #include <iostream>
 #include <sstream>
 
-class Logger : public std::ostream
+class Logger : public UString::OStream
 {
 private:
-	class LoggerStreamBuffer : public std::stringbuf
+	class LoggerStreamBuffer : public UString::StringBuf
 	{
 	public:
-		explicit LoggerStreamBuffer(std::ostream &str) : output(str) {}
+		explicit LoggerStreamBuffer(UString::OStream &str) : output(str) {}
 
 		int sync() override;
 
 	private:
-		std::ostream& output;
-		static std::string GetTimeStamp();
+		UString::OStream& output;
+		static UString::String GetTimeStamp();
 	} buffer;
 
 public:
-	explicit Logger(std::ostream& str) : std::ostream(&buffer), buffer(str) {}
+	explicit Logger(UString::OStream& str) : UString::OStream(&buffer), buffer(str) {}
 	virtual ~Logger() = default;
 };
 
