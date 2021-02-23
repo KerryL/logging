@@ -17,7 +17,7 @@
 
 // Local headers
 #include "timeHistoryLog.h"
-#include "timingUtility.h"
+#include "utilities/timingUtility.h"
 
 //==========================================================================
 // Class:			TimeHistoryLog
