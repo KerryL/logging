@@ -62,8 +62,8 @@ private:
 		std::unique_ptr<std::lock_guard<std::mutex>> CreateThreadBuffer(const bool& bufferMapMutexAlreadyLocked = false);
 
 		static const Clock::duration idleThreadTimeThreshold;
-		static const unsigned int maxCleanupCount;
-		unsigned int cleanupCount = 0;
+		static const unsigned int cleanupSyncCount;
+		unsigned int syncCount = 0;
 
 		void CleanupBuffers();
 	} buffer;
@@ -140,7 +140,7 @@ void CombinedLogger<StreamType>::Add(StreamType& log)
 //
 //==========================================================================
 template<class StreamType>
-const unsigned int CombinedLogger<StreamType>::CombinedStreamBuffer::maxCleanupCount(100);
+const unsigned int CombinedLogger<StreamType>::CombinedStreamBuffer::cleanupSyncCount(100);
 template<class StreamType>
 const std::chrono::steady_clock::duration
 	CombinedLogger<StreamType>::CombinedStreamBuffer::idleThreadTimeThreshold(std::chrono::minutes(2));
@@ -197,7 +197,13 @@ typename CombinedLogger<StreamType>::CombinedStreamBuffer::IntType CombinedLogge
 		// another thread is writing to the logs in sync() (so we don't lock
 		// the buffer mutex here)
 		const auto& tb(threadBuffer);
-		tb.find(std::this_thread::get_id())->second->ss << static_cast<CharType>(c);
+		const auto bufferIterator(tb.find(std::this_thread::get_id()));
+
+		// Check here, just in case another thread sync()ed, resulting in CleanupBuffers() and removal
+		// of this thread's buffer (if it hasn't been written to for a while)
+		// TODO:  Really, this should be fixed because if this happens, we would loose this character
+		if (bufferIterator != tb.end())
+			bufferIterator->second->ss << static_cast<CharType>(c);
 	}
 
 	return c;
@@ -242,12 +248,14 @@ int CombinedLogger<StreamType>::CombinedStreamBuffer::sync()
 				result = -1;
 			l->flush();
 		}
+
+		threadBuffer[id]->lastFlushTime = Clock::now();
 	}
 
-	if (++cleanupCount == maxCleanupCount)
+	if (++syncCount == cleanupSyncCount)
 	{
 		CleanupBuffers();
-		cleanupCount = 0;
+		syncCount = 0;
 	}
 
 	// Clear out the buffer
