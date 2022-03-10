@@ -1,4 +1,4 @@
-// File:  combinedLogger.h
+// File:  CombinedLogger.h
 // Date:  9/3/2013
 // Auth:  K. Loux
 // Copy:  (c) Copyright 2013
@@ -59,7 +59,7 @@ private:
 		typedef std::map<std::thread::id, std::unique_ptr<Buffer>> BufferMap;
 		BufferMap threadBuffer;
 		std::mutex bufferMapMutex;// Protects threadBuffer
-		std::unique_ptr<std::lock_guard<std::mutex>> CreateThreadBuffer(const bool& bufferMapMutexAlreadyLocked = false);
+		std::unique_ptr<std::lock_guard<std::mutex>> CreateThreadBuffer();
 
 		static const Clock::duration idleThreadTimeThreshold;
 		static const unsigned int cleanupSyncCount;
@@ -143,7 +143,7 @@ template<class StreamType>
 const unsigned int CombinedLogger<StreamType>::CombinedStreamBuffer::cleanupSyncCount(100);
 template<class StreamType>
 const std::chrono::steady_clock::duration
-	CombinedLogger<StreamType>::CombinedStreamBuffer::idleThreadTimeThreshold(std::chrono::minutes(2));
+CombinedLogger<StreamType>::CombinedStreamBuffer::idleThreadTimeThreshold(std::chrono::minutes(2));
 
 //==========================================================================
 // Class:			CombinedLogger::CombinedStreamBuffer::Buffer
@@ -152,10 +152,11 @@ const std::chrono::steady_clock::duration
 // Description:		Constructor for buffer class.
 //
 // Input Arguments:
-//		lock	= std::unique_ptr<std::lock_guard<std::mutex>>&
+//		None
 //
 // Output Arguments:
-//		None
+//		lock	= std::unique_ptr<std::lock_guard<std::mutex>>& pointer to a
+//				  lock_guard for this->mutex (created/locked in this constructor)
 //
 // Return Value:
 //		None
@@ -190,7 +191,13 @@ CombinedLogger<StreamType>::CombinedStreamBuffer::Buffer::Buffer(
 template<class StreamType>
 typename CombinedLogger<StreamType>::CombinedStreamBuffer::IntType CombinedLogger<StreamType>::CombinedStreamBuffer::overflow(IntType c)
 {
+	// If necessary, create a buffer for this thread.  Also aquire a lock for the buffer's
+	// mutex (via a lock_guard which will go out of scope when this function returns).
+	// Locking this mutex means that the associated thread buffer cannot be deleted during a CleanupBuffers().
+	std::lock_guard<std::mutex> mapLock(bufferMapMutex);
 	auto lock(CreateThreadBuffer());// TODO:  Improve efficiency?  Instead of locking/unlocking for every character?
+	// TODO:  Do we still need mutexes for each thread's buffer now that we're locking bufferMapMutex here?
+
 	if (c != StreamType::traits_type::eof())
 	{
 		// Allow other threads to continue to buffer to the stream, even if
@@ -202,6 +209,7 @@ typename CombinedLogger<StreamType>::CombinedStreamBuffer::IntType CombinedLogge
 		// Check here, just in case another thread sync()ed, resulting in CleanupBuffers() and removal
 		// of this thread's buffer (if it hasn't been written to for a while)
 		// TODO:  Really, this should be fixed because if this happens, we would loose this character
+		// This check can probably be removed (TODO).?
 		if (bufferIterator != tb.end())
 			bufferIterator->second->ss << static_cast<CharType>(c);
 	}
@@ -237,7 +245,7 @@ int CombinedLogger<StreamType>::CombinedStreamBuffer::sync()
 	const std::thread::id id(std::this_thread::get_id());
 
 	std::lock_guard<std::mutex> lock(bufferMapMutex);
-	auto localLock(CreateThreadBuffer(true));
+	auto localLock(CreateThreadBuffer());
 
 	{
 		std::lock_guard<std::mutex> logLock(log.logMutex);
@@ -272,31 +280,25 @@ int CombinedLogger<StreamType>::CombinedStreamBuffer::sync()
 //					and creates the buffer if it doesn't exist.
 //
 // Input Arguments:
-//		bufferMapMutexAlreadyLocked = const bool&
+//		None
 //
 // Output Arguments:
 //		None
 //
 // Return Value:
-//		None
+//		std::unique_ptr<std::lock_guard<std::mutex>> pointing to a lock_guard
+//		protecting the (new) buffer
 //
 //==========================================================================
 template<class StreamType>
-std::unique_ptr<std::lock_guard<std::mutex>> CombinedLogger<StreamType>::CombinedStreamBuffer::CreateThreadBuffer(const bool& bufferMapMutexAlreadyLocked)
+std::unique_ptr<std::lock_guard<std::mutex>> CombinedLogger<StreamType>::CombinedStreamBuffer::CreateThreadBuffer()
 {
+	// NOTE:  Caller is assumed to have already locked bufferMapMutex
 	std::unique_ptr<std::lock_guard<std::mutex>> returnLock;
 
 	const std::thread::id id(std::this_thread::get_id());
 	if (threadBuffer.find(id) == threadBuffer.end())
-	{
-		if (!bufferMapMutexAlreadyLocked)
-		{
-			std::lock_guard<std::mutex> lock(bufferMapMutex);
-			threadBuffer[id] = std::make_unique<Buffer>(returnLock);
-		}
-		else
-			threadBuffer[id] = std::make_unique<Buffer>(returnLock);
-	}
+		threadBuffer[id] = std::make_unique<Buffer>(returnLock);// When Buffer is created, returnLock is also created, locking Buffer::mutex
 	else
 		returnLock = std::make_unique<std::lock_guard<std::mutex>>(threadBuffer[id]->mutex);
 
@@ -307,8 +309,8 @@ std::unique_ptr<std::lock_guard<std::mutex>> CombinedLogger<StreamType>::Combine
 // Class:			CombinedLogger::CombinedStreamBuffer
 // Function:		CleanupBuffers
 //
-// Description:		Removes buffers from the map if the thread is no joinable.  This
-//					risks an unnecessary removal/recration of buffers for threads
+// Description:		Removes buffers from the map if the thread is not joinable.  This
+//					risks an unnecessary removal/recreation of buffers for threads
 //					that are still actively writing to the log, but it reduces
 //					the risk of growing the size of the map as a result of dead
 //					threads.
@@ -326,21 +328,17 @@ std::unique_ptr<std::lock_guard<std::mutex>> CombinedLogger<StreamType>::Combine
 template<class StreamType>
 void CombinedLogger<StreamType>::CombinedStreamBuffer::CleanupBuffers()
 {
-	// NOTE:  Caller is assumed to have already locked bufferMutex
-	std::vector<std::unique_lock<std::mutex>> locks;// TODO:  Is this OK?  Or do we also need to move the associated mutex objects?
+	// NOTE:  Caller is assumed to have already locked bufferMapMutex
 	const Clock::time_point now(Clock::now());
 
-	auto needsCleanup([&locks, &now, this](const typename BufferMap::value_type& b)
+	auto needsCleanup([&now, this](const typename BufferMap::value_type& b)
 	{
 		std::unique_lock<std::mutex> lock(b.second->mutex, std::try_to_lock);
 		if (!lock.owns_lock())// Failed to lock mutex - buffer must still be active
 			return false;
 
 		if (b.second->ss.str().empty() && now - b.second->lastFlushTime > idleThreadTimeThreshold)
-		{
-			locks.push_back(std::move(lock));
 			return true;
-		}
 
 		return false;
 	});
@@ -349,7 +347,7 @@ void CombinedLogger<StreamType>::CombinedStreamBuffer::CleanupBuffers()
 	for (; it != threadBuffer.end();)
 	{
 		if (needsCleanup(*it))
-			it = threadBuffer.erase(it);
+			it = threadBuffer.erase(it);// Assign result of erase back to iterator to ensure we always have a valid iterator
 		else
 			++it;
 	}
